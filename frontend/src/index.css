@@ -1,0 +1,74 @@
+:root {
+  --bg: #0b1220;
+  --bg-elev: #0f172a;
+  --surface: #0b1324;
+  --primary: #61e4a8;
+  --primary-700: #2fd49a;
+  --text: #e8eef8;
+  --muted: #a3b2c7;
+  --border: #203145;
+  --grad-1: radial-gradient(1200px 600px at 10% -10%, rgba(0,229,168,.12) 0%, transparent 60%), linear-gradient(180deg, #0b1220 0%, #0e1730 100%);
+  --grad-2: linear-gradient(135deg, rgba(97,228,168,.18), rgba(47,212,154,.08));
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body { margin: 0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--grad-1); color: var(--text); }
+
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; display: block; }
+
+.container { width: 100%; max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+
+.btn { background: var(--primary); color: #05331d; border: none; padding: 12px 18px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: transform .2s ease, box-shadow .2s ease; }
+.btn:hover { transform: translateY(-1px); box-shadow: 0 10px 24px rgba(0,229,168,.2); }
+.btn-outline { background: transparent; border: 1px solid var(--primary); color: var(--text); }
+
+.navbar { position: sticky; top: 0; z-index: 50; background: rgba(11,18,32,.7); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
+.navbar-inner { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+.nav-links { display: flex; gap: 18px; align-items: center; }
+.nav-brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .3px; }
+.nav-brand-badge { width: 10px; height: 10px; background: var(--primary); border-radius: 3px; transform: rotate(45deg); }
+
+.footer { border-top: 1px solid var(--border); padding: 40px 0; margin-top: 80px; background: #0a0f1a; color: var(--muted); }
+.footer a { color: var(--text); }
+
+.hero { position: relative; min-height: calc(100vh - 64px); display: grid; align-items: center; }
+.hero-bg { position: absolute; inset: 0; background-position: center; background-size: cover; filter: brightness(.9) saturate(1.05); transform: scale(1.02); animation: heroZoom 18s ease-in-out infinite alternate; }
+.hero-overlay { position: absolute; inset: 0; background: radial-gradient(80% 60% at 50% 10%, rgba(0,229,168,.12), rgba(0,0,0,.35) 60%, rgba(0,0,0,.7)); pointer-events: none; }
+.hero-content { position: relative; z-index: 1; padding: 80px 0; }
+.hero-title { font-size: clamp(36px, 6vw, 72px); line-height: 1.05; margin: 0 0 12px; font-weight: 900; }
+.hero-sub { max-width: 720px; color: var(--muted); font-size: clamp(16px, 2vw, 20px); margin: 0 0 28px; }
+
+.section { padding: 100px 0; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 18px; }
+.card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 16px; padding: 24px; position: relative; overflow: hidden; }
+.card::before { content: ""; position: absolute; inset: -2px; border-radius: 18px; padding: 2px; background: var(--grad-2); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; opacity: .6; pointer-events: none; }
+.card > * { position: relative; z-index: 1; }
+.card h3 { margin: 0 0 8px; }
+.muted { color: var(--muted); }
+
+@keyframes heroZoom {
+  0% { transform: scale(1.02); }
+  100% { transform: scale(1.07); }
+}
+
+/* Inputs */
+.input { width: 100%; margin-top: 6px; padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+
+/* Scroll reveal */
+.reveal { opacity: 0; transform: translateY(12px); animation: reveal .8s ease forwards; }
+@keyframes reveal { to { opacity: 1; transform: translateY(0); } }
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
