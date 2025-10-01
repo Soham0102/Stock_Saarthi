@@ -12,6 +12,7 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// Maps for OTP and Users
 const phoneToOtp = new Map();
 const usersByPhone = new Map();
 
@@ -21,6 +22,7 @@ const usersByPhone = new Map();
 app.post("/api/auth/send-otp", async (req, res) => {
   const { phone, name } = req.body || {};
   if (!phone) return res.status(400).json({ error: "Phone is required" });
+
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   phoneToOtp.set(phone, { otp, name: name || null, createdAt: Date.now() });
 
@@ -50,10 +52,13 @@ app.post("/api/auth/send-otp", async (req, res) => {
 app.post("/api/auth/verify-otp", (req, res) => {
   const { phone, otp } = req.body || {};
   if (!phone || !otp) return res.status(400).json({ error: "Phone and OTP are required" });
+
   const record = phoneToOtp.get(phone);
   if (!record) return res.status(400).json({ error: "No OTP requested for this phone" });
+
   const isValid = record.otp === otp && Date.now() - record.createdAt < 5 * 60 * 1000;
   if (!isValid) return res.status(400).json({ error: "Invalid or expired OTP" });
+
   const token = Buffer.from(`${phone}:${Date.now()}`).toString("base64");
   return res.json({ success: true, token, user: { phone, name: record.name || "User" } });
 });
@@ -75,6 +80,7 @@ app.post("/api/auth/signup", async (req, res) => {
 app.post("/api/auth/login", async (req, res) => {
   const { phone, password } = req.body || {};
   if (!phone || !password) return res.status(400).json({ error: "phone, password required" });
+
   const user = usersByPhone.get(phone);
   if (!user) return res.status(400).json({ error: "User not found" });
 
@@ -87,6 +93,7 @@ app.post("/api/auth/login", async (req, res) => {
 
 // ====== STOCK APIs ======
 
+// Fetch quotes
 app.get("/api/quotes", async (req, res) => {
   try {
     const { symbols } = req.query;
@@ -98,31 +105,20 @@ app.get("/api/quotes", async (req, res) => {
     for (const host of baseHosts) {
       const url = `${host}/v7/finance/quote?symbols=${encodeURIComponent(symbols)}`;
       try {
-        const response = await fetch(url, {
-          headers: {
-            "User-Agent": "Mozilla/5.0",
-            "Accept": "application/json, text/plain, */*",
-          },
-        });
-        if (!response.ok) {
-          lastErr = new Error(`Upstream ${response.status}`);
-          continue;
-        }
+        const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        if (!response.ok) { lastErr = new Error(`Upstream ${response.status}`); continue; }
         const data = await response.json();
         return res.json(data);
-      } catch (e) {
-        lastErr = e;
-        continue;
-      }
+      } catch (e) { lastErr = e; continue; }
     }
 
-    return res.status(502).json({ error: "Upstream error", details: lastErr?.message || String(lastErr) });
+    res.status(502).json({ error: "Upstream error", details: lastErr?.message || String(lastErr) });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch quotes", details: err.message });
   }
 });
 
-// Prediction endpoint
+// ===== PREDICTION ENDPOINT =====
 app.get("/api/predict", async (req, res) => {
   try {
     const { symbol = "AAPL", years = "1" } = req.query;
@@ -163,7 +159,7 @@ app.get("/api/predict", async (req, res) => {
   }
 });
 
-// History endpoint
+// ===== HISTORY ENDPOINT =====
 app.get("/api/history", async (req, res) => {
   try {
     const { symbol = "AAPL", range = "5y" } = req.query;
@@ -189,7 +185,7 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// Signals endpoint
+// ===== SIGNALS ENDPOINT =====
 app.get("/api/signals", async (req, res) => {
   try {
     const { symbol = "AAPL", short = "20", long = "50" } = req.query;
@@ -252,10 +248,10 @@ app.get("/api/signals", async (req, res) => {
   }
 });
 
-// ====== SERVE REACT FRONTEND (important for Render) ======
+// ====== SERVE REACT FRONTEND ======
 const __dirname = pathModule.dirname(fileURLToPath(import.meta.url));
 app.use(express.static(pathModule.join(__dirname, "build")));
-app.get("*", (req, res) => {
+app.get(/.*/, (req, res) => {
   res.sendFile(pathModule.join(__dirname, "build", "index.html"));
 });
 
