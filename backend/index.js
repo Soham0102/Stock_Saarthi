@@ -5,6 +5,9 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+import path from "path";
+import { fileURLToPath } from "url";
+
 app.use(cors());
 app.use(express.json());
 
@@ -227,6 +230,7 @@ app.get("/api/signals", async (req, res) => {
 
 // ====== SERVE REACT FRONTEND (important for Render) ======
 app.use(express.static(path.join(__dirname, "build")));
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 app.get("*", (req, res) => {
   res.sendFile(path.join(__dirname, "build", "index.html"));
 });
