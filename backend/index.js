@@ -1,18 +1,20 @@
 // backend/index.js
 const express = require("express");
 const cors = require("cors");
+const path = require("path");
 const app = express();
-const PORT = 5000;
+const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
 
-// In-memory stores (demo only)
 const phoneToOtp = new Map();
-const usersByPhone = new Map(); // phone -> { name, phone, passwordHash }
+const usersByPhone = new Map(); 
 const bcrypt = require("bcryptjs");
 
-// Send OTP (Twilio if configured, else mock) — retained for reference but not used by new flow
+// ====== AUTH APIs ======
+
+// Send OTP (Twilio if configured, else mock)
 app.post("/api/auth/send-otp", async (req, res) => {
   const { phone, name } = req.body || {};
   if (!phone) return res.status(400).json({ error: "Phone is required" });
@@ -24,16 +26,18 @@ app.post("/api/auth/send-otp", async (req, res) => {
     const from = process.env.TWILIO_FROM_NUMBER;
     if (sid && token && from) {
       const twilio = require("twilio")(sid, token);
-      const msg = await twilio.messages.create({ to: phone, from, body: `Your StockSarthi OTP is ${otp}. Valid for 5 minutes.` });
+      const msg = await twilio.messages.create({
+        to: phone,
+        from,
+        body: `Your StockSarthi OTP is ${otp}. Valid for 5 minutes.`,
+      });
       return res.json({ success: true, message: "OTP sent via SMS", sid: msg.sid });
     }
-  } catch (e) {
-    // Fallthrough to mock response
-  }
+  } catch (e) {}
   res.json({ success: true, message: "OTP sent (mock)", otp });
 });
 
-// Verify OTP (mock)
+// Verify OTP
 app.post("/api/auth/verify-otp", (req, res) => {
   const { phone, otp } = req.body || {};
   if (!phone || !otp) return res.status(400).json({ error: "Phone and OTP are required" });
@@ -41,7 +45,6 @@ app.post("/api/auth/verify-otp", (req, res) => {
   if (!record) return res.status(400).json({ error: "No OTP requested for this phone" });
   const isValid = record.otp === otp && Date.now() - record.createdAt < 5 * 60 * 1000;
   if (!isValid) return res.status(400).json({ error: "Invalid or expired OTP" });
-  // For demo, return a fake token
   const token = Buffer.from(`${phone}:${Date.now()}`).toString("base64");
   return res.json({ success: true, token, user: { phone, name: record.name || "User" } });
 });
@@ -69,7 +72,8 @@ app.post("/api/auth/login", async (req, res) => {
   res.json({ success: true, token, user: { phone, name: user.name } });
 });
 
-// Yahoo Finance proxy (basic price fetch)
+// ====== STOCK APIs ======
+
 app.get("/api/quotes", async (req, res) => {
   try {
     const { symbols } = req.query;
@@ -84,7 +88,7 @@ app.get("/api/quotes", async (req, res) => {
       try {
         const response = await fetch(url, {
           headers: {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36",
+            "User-Agent": "Mozilla/5.0",
             "Accept": "application/json, text/plain, */*",
           },
         });
@@ -105,14 +109,13 @@ app.get("/api/quotes", async (req, res) => {
   }
 });
 
-// Simple prediction endpoint using naive time-series extrapolation
-// For demo: fetch historical daily close and extend using moving average and drift
+// Prediction endpoint
 app.get("/api/predict", async (req, res) => {
   try {
     const { symbol = "AAPL", years = "1" } = req.query;
     const periodYears = Math.min(Math.max(parseInt(years, 10) || 1, 1), 5);
     const now = Math.floor(Date.now() / 1000);
-    const from = now - 60 * 60 * 24 * 365 * 5; // up to 5y back for history
+    const from = now - 60 * 60 * 24 * 365 * 5;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=${now}&interval=1d&includeAdjustedClose=true`;
     const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!response.ok) return res.status(502).json({ error: "Upstream error" });
@@ -121,21 +124,19 @@ app.get("/api/predict", async (req, res) => {
     const closes = result?.indicators?.adjclose?.[0]?.adjclose || result?.indicators?.quote?.[0]?.close || [];
     if (!closes.length) return res.status(400).json({ error: "No historical data" });
 
-    // Compute simple drift (last 60d) and moving average for smoothing
     const window = 20;
     const recent = closes.slice(-60);
     const drift = (recent[recent.length - 1] - recent[0]) / Math.max(recent.length - 1, 1);
     const last = closes[closes.length - 1];
 
-    // Forecast next N trading days (~252 per year)
     const forecastDays = Math.round(252 * periodYears);
     const forecast = [];
     let cur = last;
     for (let i = 0; i < forecastDays; i++) {
-      // moving average component
-      const tail = closes.slice(-window + Math.min(i, window - 1)).concat(forecast.slice(Math.max(0, i - (window - 1))).map(f => f.price));
+      const tail = closes.slice(-window + Math.min(i, window - 1)).concat(
+        forecast.slice(Math.max(0, i - (window - 1))).map(f => f.price)
+      );
       const ma = tail.length ? tail.reduce((a, b) => a + b, 0) / tail.length : cur;
-      // simple drift step
       cur = (cur + ma) / 2 + drift * 0.5;
       forecast.push({ dayIndex: i + 1, price: Number(cur.toFixed(2)) });
     }
@@ -146,7 +147,7 @@ app.get("/api/predict", async (req, res) => {
   }
 });
 
-// Historical OHLC data (daily)
+// History endpoint
 app.get("/api/history", async (req, res) => {
   try {
     const { symbol = "AAPL", range = "5y" } = req.query;
@@ -168,7 +169,7 @@ app.get("/api/history", async (req, res) => {
   }
 });
 
-// Buy/Sell signals using SMA crossover + simple stop/target guidance
+// Signals endpoint
 app.get("/api/signals", async (req, res) => {
   try {
     const { symbol = "AAPL", short = "20", long = "50" } = req.query;
@@ -224,4 +225,11 @@ app.get("/api/signals", async (req, res) => {
   }
 });
 
+// ====== SERVE REACT FRONTEND (important for Render) ======
+app.use(express.static(path.join(__dirname, "build")));
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "build", "index.html"));
+});
+
+// ====== START SERVER ======
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
