@@ -1,19 +1,19 @@
 // backend/index.js
-const express = require("express");
-const cors = require("cors");
-const path = require("path");
+
+import express from "express";
+import cors from "cors";
+import { fileURLToPath } from "url";
+import pathModule from "path";
+import bcrypt from "bcryptjs";
+
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-import path from "path";
-import { fileURLToPath } from "url";
 
 app.use(cors());
 app.use(express.json());
 
 const phoneToOtp = new Map();
-const usersByPhone = new Map(); 
-const bcrypt = require("bcryptjs");
+const usersByPhone = new Map();
 
 // ====== AUTH APIs ======
 
@@ -23,20 +23,26 @@ app.post("/api/auth/send-otp", async (req, res) => {
   if (!phone) return res.status(400).json({ error: "Phone is required" });
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   phoneToOtp.set(phone, { otp, name: name || null, createdAt: Date.now() });
+
   try {
     const sid = process.env.TWILIO_ACCOUNT_SID;
     const token = process.env.TWILIO_AUTH_TOKEN;
     const from = process.env.TWILIO_FROM_NUMBER;
+
     if (sid && token && from) {
-      const twilio = require("twilio")(sid, token);
-      const msg = await twilio.messages.create({
+      const twilio = await import("twilio");
+      const client = twilio.default(sid, token);
+      const msg = await client.messages.create({
         to: phone,
         from,
         body: `Your StockSarthi OTP is ${otp}. Valid for 5 minutes.`,
       });
       return res.json({ success: true, message: "OTP sent via SMS", sid: msg.sid });
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error("Twilio error:", e.message);
+  }
+
   res.json({ success: true, message: "OTP sent (mock)", otp });
 });
 
@@ -57,9 +63,11 @@ app.post("/api/auth/signup", async (req, res) => {
   const { phone, name, password } = req.body || {};
   if (!phone || !password || !name) return res.status(400).json({ error: "name, phone, password required" });
   if (usersByPhone.has(phone)) return res.status(400).json({ error: "User already exists" });
+
   const passwordHash = await bcrypt.hash(password, 10);
   usersByPhone.set(phone, { name, phone, passwordHash });
   const token = Buffer.from(`${phone}:${Date.now()}`).toString("base64");
+
   res.json({ success: true, token, user: { phone, name } });
 });
 
@@ -69,8 +77,10 @@ app.post("/api/auth/login", async (req, res) => {
   if (!phone || !password) return res.status(400).json({ error: "phone, password required" });
   const user = usersByPhone.get(phone);
   if (!user) return res.status(400).json({ error: "User not found" });
+
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(400).json({ error: "Invalid credentials" });
+
   const token = Buffer.from(`${phone}:${Date.now()}`).toString("base64");
   res.json({ success: true, token, user: { phone, name: user.name } });
 });
@@ -81,11 +91,10 @@ app.get("/api/quotes", async (req, res) => {
   try {
     const { symbols } = req.query;
     if (!symbols) return res.status(400).json({ error: "symbols query is required" });
-    const baseHosts = [
-      "https://query1.finance.yahoo.com",
-      "https://query2.finance.yahoo.com"
-    ];
+
+    const baseHosts = ["https://query1.finance.yahoo.com", "https://query2.finance.yahoo.com"];
     let lastErr;
+
     for (const host of baseHosts) {
       const url = `${host}/v7/finance/quote?symbols=${encodeURIComponent(symbols)}`;
       try {
@@ -106,6 +115,7 @@ app.get("/api/quotes", async (req, res) => {
         continue;
       }
     }
+
     return res.status(502).json({ error: "Upstream error", details: lastErr?.message || String(lastErr) });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch quotes", details: err.message });
@@ -120,8 +130,10 @@ app.get("/api/predict", async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const from = now - 60 * 60 * 24 * 365 * 5;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=${now}&interval=1d&includeAdjustedClose=true`;
+
     const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!response.ok) return res.status(502).json({ error: "Upstream error" });
+
     const data = await response.json();
     const result = data?.chart?.result?.[0];
     const closes = result?.indicators?.adjclose?.[0]?.adjclose || result?.indicators?.quote?.[0]?.close || [];
@@ -135,6 +147,7 @@ app.get("/api/predict", async (req, res) => {
     const forecastDays = Math.round(252 * periodYears);
     const forecast = [];
     let cur = last;
+
     for (let i = 0; i < forecastDays; i++) {
       const tail = closes.slice(-window + Math.min(i, window - 1)).concat(
         forecast.slice(Math.max(0, i - (window - 1))).map(f => f.price)
@@ -157,15 +170,19 @@ app.get("/api/history", async (req, res) => {
     const now = Math.floor(Date.now() / 1000);
     const years = range.endsWith("y") ? parseInt(range) : 5;
     const from = now - 60 * 60 * 24 * 365 * Math.min(Math.max(years || 5, 1), 10);
+
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=${now}&interval=1d&includeAdjustedClose=true`;
     const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!response.ok) return res.status(502).json({ error: "Upstream error" });
+
     const data = await response.json();
     const result = data?.chart?.result?.[0];
     if (!result) return res.status(400).json({ error: "No data" });
+
     const ts = result?.timestamp || [];
     const q = result?.indicators?.quote?.[0] || {};
     const o = q.open || [], h = q.high || [], l = q.low || [], c = q.close || [];
+
     res.json({ symbol, timestamp: ts, open: o, high: h, low: l, close: c });
   } catch (e) {
     res.status(500).json({ error: "Failed to load history", details: e.message });
@@ -180,9 +197,11 @@ app.get("/api/signals", async (req, res) => {
     const l = Math.max(parseInt(long, 10) || 50, s + 1);
     const now = Math.floor(Date.now() / 1000);
     const from = now - 60 * 60 * 24 * 365 * 3;
+
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?period1=${from}&period2=${now}&interval=1d&includeAdjustedClose=true`;
     const response = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (!response.ok) return res.status(502).json({ error: "Upstream error" });
+
     const data = await response.json();
     const result = data?.chart?.result?.[0];
     const close = result?.indicators?.adjclose?.[0]?.adjclose || result?.indicators?.quote?.[0]?.close || [];
@@ -199,9 +218,11 @@ app.get("/api/signals", async (req, res) => {
       }
       return out;
     }
+
     const sArr = sma(close, s);
     const lArr = sma(close, l);
     const signals = [];
+
     for (let i = 1; i < close.length; i++) {
       if (sArr[i - 1] != null && lArr[i - 1] != null && sArr[i] != null && lArr[i] != null) {
         const prevDiff = sArr[i - 1] - lArr[i - 1];
@@ -213,14 +234,17 @@ app.get("/api/signals", async (req, res) => {
         }
       }
     }
+
     const lastPrice = close[close.length - 1];
     const lastS = sArr[sArr.length - 1];
     const lastL = lArr[lArr.length - 1];
     let action = "HOLD";
     if (lastS != null && lastL != null) action = lastS > lastL ? "BUY_BIAS" : "SELL_BIAS";
-    const guidance = action === "BUY_BIAS"
-      ? { stopLoss: Number((lastPrice * 0.95).toFixed(2)), target: Number((lastPrice * 1.1).toFixed(2)) }
-      : { stopLoss: Number((lastPrice * 1.05).toFixed(2)), target: Number((lastPrice * 0.9).toFixed(2)) };
+
+    const guidance =
+      action === "BUY_BIAS"
+        ? { stopLoss: Number((lastPrice * 0.95).toFixed(2)), target: Number((lastPrice * 1.1).toFixed(2)) }
+        : { stopLoss: Number((lastPrice * 1.05).toFixed(2)), target: Number((lastPrice * 0.9).toFixed(2)) };
 
     res.json({ symbol, lastPrice, short: s, long: l, action, guidance, signalsCount: signals.length, signals });
   } catch (e) {
@@ -229,10 +253,10 @@ app.get("/api/signals", async (req, res) => {
 });
 
 // ====== SERVE REACT FRONTEND (important for Render) ======
-app.use(express.static(path.join(__dirname, "build")));
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const __dirname = pathModule.dirname(fileURLToPath(import.meta.url));
+app.use(express.static(pathModule.join(__dirname, "build")));
 app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "build", "index.html"));
+  res.sendFile(pathModule.join(__dirname, "build", "index.html"));
 });
 
 // ====== START SERVER ======
